@@ -1,0 +1,27 @@
+import PortalLayout from '@/components/layout/PortalLayout'
+import PersonalInfoForm from '@/components/forms/PersonalInfoForm'
+
+export default function PersonalInfoPage() {
+  return (
+    <PortalLayout>
+      <div className="max-w-xl mx-auto flex flex-col gap-6">
+        <div>
+          <div className="flex items-center gap-2 text-grey-600 text-sm mb-4">
+            <i className="ri-id-card-line" />
+            <span>Informations personnelles</span>
+          </div>
+          <h1 className="font-condensed font-bold text-2xl text-grey-900" style={{ letterSpacing: '-0.02em' }}>
+            Vos informations personnelles
+          </h1>
+          <p className="text-grey-600 text-sm mt-1">
+            Date de naissance, nationalité et coordonnées du titulaire du compte.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-[12px] border border-grey-200 p-6" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
+          <PersonalInfoForm />
+        </div>
+      </div>
+    </PortalLayout>
+  )
+}
