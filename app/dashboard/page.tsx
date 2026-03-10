@@ -17,19 +17,12 @@ const SECTIONS = [
   },
   {
     key: 'accountOwner' as const,
-    title: 'Propriétaire du compte',
-    description: 'Informations sur la personne qui fait la demande.',
+    title: 'Vos informations personnelles',
+    description: 'Identité, coordonnées, date de naissance et nationalité du demandeur.',
     icon: 'ri-user-line',
     href: '/sections/account-owner',
     required: true,
-  },
-  {
-    key: 'personalInfo' as const,
-    title: 'Informations personnelles',
-    description: 'Date de naissance, nationalité et coordonnées.',
-    icon: 'ri-id-card-line',
-    href: '/sections/personal-info',
-    required: true,
+    completesWith: ['accountOwner', 'personalInfo'] as const, // une seule carte, deux sections dans le store
   },
   {
     key: 'relations' as const,
@@ -57,11 +50,20 @@ const SECTIONS = [
   },
 ]
 
+function isSectionComplete(state: import('@/types/portal').PortalState, section: (typeof SECTIONS)[number]) {
+  if (section.key === null) return false
+  const completesWith = 'completesWith' in section && section.completesWith
+  if (completesWith) {
+    return completesWith.every((k) => state.sections[k].completed)
+  }
+  return state.sections[section.key].completed
+}
+
 export default function DashboardPage() {
   const { state } = usePortal()
 
   const requiredSections = SECTIONS.filter((s) => s.key !== null)
-  const completedCount = requiredSections.filter((s) => s.key && state.sections[s.key].completed).length
+  const completedCount = requiredSections.filter((s) => isSectionComplete(state, s)).length
 
   return (
     <PortalLayout>
@@ -82,7 +84,7 @@ export default function DashboardPage() {
         {/* Cards grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {SECTIONS.map((section) => {
-            const isCompleted = section.key ? state.sections[section.key].completed : false
+            const isCompleted = section.key !== null ? isSectionComplete(state, section) : false
             const isDisabled = section.key === null
 
             if (isDisabled) {

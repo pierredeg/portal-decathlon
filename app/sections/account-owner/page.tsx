@@ -8,13 +8,13 @@ export default function AccountOwnerPage() {
         <div>
           <div className="flex items-center gap-2 text-grey-600 text-sm mb-4">
             <i className="ri-user-line" />
-            <span>Propriétaire du compte</span>
+            <span>Vos informations personnelles</span>
           </div>
           <h1 className="font-condensed font-bold text-2xl text-grey-900" style={{ letterSpacing: '-0.02em' }}>
-            Qui fait la demande ?
+            Vos informations personnelles
           </h1>
           <p className="text-grey-600 text-sm mt-1">
-            Informations sur la personne qui soumet ce dossier au nom de l&apos;entreprise.
+            Identité, coordonnées, date de naissance et nationalité du demandeur.
           </p>
         </div>
 
