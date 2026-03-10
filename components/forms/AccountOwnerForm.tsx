@@ -12,9 +12,9 @@ const schema = z.object({
   last_name: z.string().min(1, 'Champ requis'),
   email: z.string().email('Email invalide'),
   role_in_company: z.string().min(1, 'Champ requis'),
-  birth_date_day: z.coerce.number().min(1).max(31),
-  birth_date_month: z.coerce.number().min(1).max(12),
-  birth_date_year: z.coerce.number().min(1900).max(new Date().getFullYear() - 18, {
+  birth_date_day: z.number().min(1).max(31),
+  birth_date_month: z.number().min(1).max(12),
+  birth_date_year: z.number().min(1900).max(new Date().getFullYear() - 18, {
     message: 'Vous devez avoir au moins 18 ans',
   }),
   nationality: z.string().min(1, 'Champ requis'),
@@ -156,7 +156,7 @@ export default function AccountOwnerForm() {
         </label>
         <div className="grid grid-cols-3 gap-3">
           <input
-            {...register('birth_date_day')}
+            {...register('birth_date_day', { valueAsNumber: true })}
             type="number"
             placeholder="JJ"
             min={1}
@@ -165,7 +165,7 @@ export default function AccountOwnerForm() {
             style={{ borderWidth: '1.5px' }}
           />
           <input
-            {...register('birth_date_month')}
+            {...register('birth_date_month', { valueAsNumber: true })}
             type="number"
             placeholder="MM"
             min={1}
@@ -174,7 +174,7 @@ export default function AccountOwnerForm() {
             style={{ borderWidth: '1.5px' }}
           />
           <input
-            {...register('birth_date_year')}
+            {...register('birth_date_year', { valueAsNumber: true })}
             type="number"
             placeholder="AAAA"
             min={1900}
