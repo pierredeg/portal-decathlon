@@ -1,11 +1,12 @@
 'use client'
 
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { usePortal } from '@/lib/store'
 import { useRouter } from 'next/navigation'
 import type { BusinessInfoData } from '@/types/portal'
+import CompanySearch, { type CompanyDetails } from '@/components/forms/CompanySearch'
 
 const schema = z.object({
   company_name: z.string().min(1, 'Champ requis'),
@@ -28,23 +29,63 @@ const COUNTRIES = [
   { code: 'OTHER', label: 'Autre' },
 ]
 
+function buildAddress(addr: CompanyDetails['official_address']): string {
+  const parts = [
+    addr.building_number,
+    addr.street,
+    addr.postcode,
+    addr.town,
+  ].filter(Boolean)
+  return parts.join(' ')
+}
+
 export default function BusinessInfoForm() {
   const { state, updateSection } = usePortal()
   const router = useRouter()
   const existing = state.sections.businessInfo.data
 
-  const { register, handleSubmit, formState: { errors } } = useForm<BusinessInfoData>({
+  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<BusinessInfoData>({
     resolver: zodResolver(schema),
     defaultValues: existing ?? undefined,
   })
+
+  const selectedCountry = useWatch({ control, name: 'country', defaultValue: 'FRA' })
+
+  function handleCompanySelect(company: CompanyDetails) {
+    setValue('company_name', company.organization_name, { shouldValidate: true })
+    setValue('registration_number', company.registration_number, { shouldValidate: true })
+    setValue('legal_form', company.legal_type_raw || company.legal_type || '', { shouldValidate: true })
+    setValue('country', company.country_code, { shouldValidate: true })
+    if (company.official_address) {
+      setValue('address', buildAddress(company.official_address), { shouldValidate: true })
+    }
+  }
 
   function onSubmit(data: BusinessInfoData) {
     updateSection('businessInfo', data)
     router.push('/dashboard')
   }
 
+  const inputClass = (hasError: boolean) =>
+    `h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
+      hasError ? 'border-danger' : 'border-grey-300'
+    }`
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
+      {/* Company autocomplete search */}
+      <CompanySearch
+        country={selectedCountry || 'FRA'}
+        onSelect={handleCompanySelect}
+      />
+
+      {/* Divider */}
+      <div className="flex items-center gap-3">
+        <div className="flex-1 h-px bg-grey-200" />
+        <span className="text-grey-600 text-xs">ou remplissez manuellement</span>
+        <div className="flex-1 h-px bg-grey-200" />
+      </div>
+
       {/* Company name */}
       <div className="flex flex-col gap-1.5">
         <label className="text-sm font-medium text-grey-900">
@@ -53,9 +94,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('company_name')}
           placeholder="Ex : Ma Société SAS"
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.company_name ? 'border-danger' : 'border-grey-300'
-          }`}
+          className={inputClass(!!errors.company_name)}
           style={{ borderWidth: '1.5px' }}
         />
         {errors.company_name && <p className="text-danger text-xs">{errors.company_name.message}</p>}
@@ -86,18 +125,16 @@ export default function BusinessInfoForm() {
         <label className="text-sm font-medium text-grey-900">
           Forme juridique <span className="text-danger">*</span>
         </label>
-        <select
+        <input
           {...register('legal_form')}
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 bg-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.legal_form ? 'border-danger' : 'border-grey-300'
-          }`}
+          placeholder="Ex : SAS, SARL, SA..."
+          list="legal-forms-list"
+          className={inputClass(!!errors.legal_form)}
           style={{ borderWidth: '1.5px' }}
-        >
-          <option value="">Sélectionner une forme juridique</option>
-          {LEGAL_FORMS.map((f) => (
-            <option key={f} value={f}>{f}</option>
-          ))}
-        </select>
+        />
+        <datalist id="legal-forms-list">
+          {LEGAL_FORMS.map((f) => <option key={f} value={f} />)}
+        </datalist>
         {errors.legal_form && <p className="text-danger text-xs">{errors.legal_form.message}</p>}
       </div>
 
@@ -109,9 +146,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('registration_number')}
           placeholder="Ex : 123 456 789"
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.registration_number ? 'border-danger' : 'border-grey-300'
-          }`}
+          className={inputClass(!!errors.registration_number)}
           style={{ borderWidth: '1.5px' }}
         />
         {errors.registration_number && <p className="text-danger text-xs">{errors.registration_number.message}</p>}
@@ -125,9 +160,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('address')}
           placeholder="Ex : 4 Boulevard de Mons, 59650 Villeneuve-d'Ascq"
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.address ? 'border-danger' : 'border-grey-300'
-          }`}
+          className={inputClass(!!errors.address)}
           style={{ borderWidth: '1.5px' }}
         />
         {errors.address && <p className="text-danger text-xs">{errors.address.message}</p>}
