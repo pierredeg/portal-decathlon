@@ -9,9 +9,10 @@ interface SectionCardProps {
   href: string
   completed: boolean
   required: boolean
+  enrichedBadge?: boolean
 }
 
-export default function SectionCard({ title, description, icon, href, completed, required }: SectionCardProps) {
+export default function SectionCard({ title, description, icon, href, completed, required, enrichedBadge }: SectionCardProps) {
   return (
     <div
       className={`bg-white rounded-[12px] border p-5 flex flex-col gap-4 transition-all ${
@@ -20,20 +21,30 @@ export default function SectionCard({ title, description, icon, href, completed,
       style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08), 0 1px 2px rgba(0,16,24,.06)' }}
     >
       <div className="flex items-start justify-between gap-3">
-        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-          completed ? 'bg-success/10' : 'bg-brand-50'
-        }`}>
+        <div
+          className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+            completed ? 'bg-success/10' : 'bg-brand-50'
+          }`}
+        >
           <i className={`${icon} text-lg ${completed ? 'text-success' : 'text-brand-500'}`} />
         </div>
-        <div className="flex items-center gap-1.5">
-          {completed && (
-            <span className="inline-flex items-center gap-1 text-success text-xs font-medium">
-              <i className="ri-check-line" />
-              Complété
+        <div className="flex flex-col items-end gap-1.5">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
+            {completed && (
+              <span className="inline-flex items-center gap-1 text-success text-xs font-medium">
+                <i className="ri-check-line" />
+                Complété
+              </span>
+            )}
+            {!required && (
+              <span className="text-grey-600 text-xs">Optionnel</span>
+            )}
+          </div>
+          {enrichedBadge && (
+            <span className="inline-flex items-center gap-0.5 text-info text-[10px] font-medium bg-info/5 border border-info/20 px-1.5 py-[2px] rounded-full">
+              <i className="ri-government-line text-[10px]" />
+              Registres officiels
             </span>
-          )}
-          {!required && (
-            <span className="text-grey-600 text-xs">Optionnel</span>
           )}
         </div>
       </div>

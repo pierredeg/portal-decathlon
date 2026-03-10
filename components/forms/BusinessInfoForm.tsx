@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -40,9 +41,11 @@ function buildAddress(addr: CompanyDetails['official_address']): string {
 }
 
 export default function BusinessInfoForm() {
-  const { state, updateSection } = usePortal()
+  const { state, updateSection, setApplicationId, setEnriched } = usePortal()
   const router = useRouter()
   const existing = state.sections.businessInfo.data
+  const [enriching, setEnriching] = useState(false)
+  const [enrichStatus, setEnrichStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<BusinessInfoData>({
     resolver: zodResolver(schema),
@@ -54,15 +57,77 @@ export default function BusinessInfoForm() {
   function handleCompanySelect(company: CompanyDetails) {
     setValue('company_name', company.organization_name, { shouldValidate: true })
     setValue('registration_number', company.registration_number, { shouldValidate: true })
-    setValue('legal_form', company.legal_type_raw || company.legal_type || '', { shouldValidate: true })
+    setValue('legal_form', company.legal_type || company.legal_type_raw || '', { shouldValidate: true })
     setValue('country', company.country_code, { shouldValidate: true })
     if (company.official_address) {
       setValue('address', buildAddress(company.official_address), { shouldValidate: true })
     }
   }
 
-  function onSubmit(data: BusinessInfoData) {
+  async function onSubmit(data: BusinessInfoData) {
     updateSection('businessInfo', data)
+
+    // Always create a fresh draft case for the current company, then enrich
+    if (data.registration_number) {
+      setEnriching(true)
+      try {
+        console.log('[BusinessInfo] Creating draft application...')
+        const appRes = await fetch('/api/applications', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            business: {
+              organization_name: data.company_name,
+              country: data.country,
+              legal_type: data.legal_form,
+              local_number: data.registration_number,
+              address: { single_line: data.address },
+            },
+            external_reference: `decathlon-${Date.now()}`,
+          }),
+        })
+        console.log('[BusinessInfo] App response status:', appRes.status)
+
+        if (!appRes.ok) {
+          const errText = await appRes.text()
+          console.error('[BusinessInfo] App creation failed:', errText)
+          throw new Error(errText)
+        }
+
+        const result = await appRes.json()
+        const applicationId = result.applicationId as string
+        console.log('[BusinessInfo] Draft created:', applicationId)
+        setApplicationId(applicationId)
+
+        console.log('[BusinessInfo] Triggering enrichment...')
+        const enrichRes = await fetch('/api/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ applicationId }),
+        })
+        console.log('[BusinessInfo] Enrich response status:', enrichRes.status)
+
+        if (enrichRes.ok) {
+          const enrichData = await enrichRes.json()
+          console.log('[BusinessInfo] Enrichment result:', enrichData.persons?.length, 'persons')
+          if (enrichData.persons?.length > 0) {
+            setEnriched(enrichData.persons)
+            setEnrichStatus('success')
+          }
+        } else {
+          const errText = await enrichRes.text()
+          console.error('[BusinessInfo] Enrich failed:', errText)
+        }
+      } catch (err) {
+        console.error('[BusinessInfo] Error:', err)
+        setEnrichStatus('error')
+      } finally {
+        setEnriching(false)
+      }
+    }
+
+    // Delay to let React flush state updates + localStorage persist
+    await new Promise((r) => setTimeout(r, 200))
     router.push('/dashboard')
   }
 
@@ -166,6 +231,20 @@ export default function BusinessInfoForm() {
         {errors.address && <p className="text-danger text-xs">{errors.address.message}</p>}
       </div>
 
+      {/* Enrichment status */}
+      {enriching && (
+        <div className="flex items-center gap-2 text-brand-500 text-sm bg-brand-50 rounded-[8px] px-4 py-2.5">
+          <i className="ri-loader-4-line animate-spin" />
+          Récupération des données officielles...
+        </div>
+      )}
+      {enrichStatus === 'success' && (
+        <div className="flex items-center gap-2 text-success text-sm bg-success/5 border border-success/20 rounded-[8px] px-4 py-2.5">
+          <i className="ri-checkbox-circle-line" />
+          Relations d&apos;entreprise pré-remplies depuis les registres officiels
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center justify-between pt-2">
         <button
@@ -178,10 +257,20 @@ export default function BusinessInfoForm() {
         </button>
         <button
           type="submit"
-          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[100px] bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm transition-colors"
+          disabled={enriching}
+          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-[100px] bg-brand-500 hover:bg-brand-600 disabled:opacity-60 text-white font-bold text-sm transition-colors"
         >
-          Sauvegarder
-          <i className="ri-check-line" />
+          {enriching ? (
+            <>
+              <i className="ri-loader-4-line animate-spin" />
+              En cours...
+            </>
+          ) : (
+            <>
+              Sauvegarder
+              <i className="ri-check-line" />
+            </>
+          )}
         </button>
       </div>
     </form>

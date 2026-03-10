@@ -108,6 +108,8 @@ export default function DashboardPage() {
               )
             }
 
+            const enrichedBadge = section.key === 'relations' && state.relationsEnriched
+
             return (
               <SectionCard
                 key={section.key}
@@ -117,6 +119,7 @@ export default function DashboardPage() {
                 href={section.href}
                 completed={isCompleted}
                 required={section.required}
+                enrichedBadge={enrichedBadge}
               />
             )
           })}

@@ -19,38 +19,78 @@ export default function SubmitButton() {
     setError(null)
 
     try {
-      // 1. Create application
-      const businessData = state.sections.businessInfo.data!
-      const appRes = await fetch('/api/applications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          business: {
-            organization_name: businessData.company_name,
-            country: businessData.country,
-            legal_type: businessData.legal_form,
-            local_number: businessData.registration_number,
-            address: { single_line: businessData.address },
-          },
-          external_reference: `decathlon-${Date.now()}`,
-        }),
-      })
+      // Reuse existing applicationId from BusinessInfoForm, or create if missing
+      let applicationId = state.applicationId
 
-      if (!appRes.ok) {
-        const err = await appRes.json()
-        throw new Error(err.error || 'Erreur lors de la création du dossier')
-      }
-
-      const { applicationId } = await appRes.json()
-
-      // 2. Submit documents
-      const docsData = state.sections.documents.data
-      if (docsData) {
-        await fetch('/api/documents', {
+      if (!applicationId) {
+        const businessData = state.sections.businessInfo.data!
+        const appRes = await fetch('/api/applications', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ applicationId, documentsData: null }), // files uploaded separately
+          body: JSON.stringify({
+            business: {
+              organization_name: businessData.company_name,
+              country: businessData.country,
+              legal_type: businessData.legal_form,
+              local_number: businessData.registration_number,
+              address: { single_line: businessData.address },
+            },
+            external_reference: `decathlon-${Date.now()}`,
+          }),
         })
+
+        if (!appRes.ok) {
+          const err = await appRes.json()
+          throw new Error(err.error || 'Erreur lors de la création du dossier')
+        }
+
+        const result = await appRes.json()
+        applicationId = result.applicationId
+      }
+
+      // Link uploaded documents to the application
+      const docsData = state.sections.documents.data
+      if (docsData) {
+        const documents: { fileId: string; expectedDocumentId: string }[] = []
+        if (docsData.kbis.fileId) {
+          documents.push({
+            fileId: docsData.kbis.fileId,
+            expectedDocumentId: docsData.kbis.expectedDocumentId || '',
+          })
+        }
+        for (const pd of docsData.personDocuments) {
+          if (pd.front.fileId) {
+            documents.push({
+              fileId: pd.front.fileId,
+              expectedDocumentId: pd.front.expectedDocumentId || '',
+            })
+          }
+          if (pd.back.fileId) {
+            documents.push({
+              fileId: pd.back.fileId,
+              expectedDocumentId: pd.back.expectedDocumentId || '',
+            })
+          }
+        }
+
+        if (documents.length > 0) {
+          const docRes = await fetch('/api/documents', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ applicationId, documents }),
+          })
+          if (!docRes.ok) {
+            console.error('[Submit] Documents linking failed:', await docRes.text())
+          }
+        }
+      }
+
+      // Submit the draft application (makes it visible in Ondorse)
+      const submitRes = await fetch(`/api/applications/${applicationId}/submit`, {
+        method: 'PUT',
+      })
+      if (!submitRes.ok) {
+        console.error('[Submit] Application submit failed:', await submitRes.text())
       }
 
       router.push(`/confirmation?ref=${applicationId}`)

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createApplication } from '@/lib/ondorse'
 
 export async function POST(req: NextRequest) {
-  console.log('[DEBUG] ONDORSE_API_URL:', process.env.ONDORSE_API_URL)
-  console.log('[DEBUG] ONDORSE_API_KEY defined:', !!process.env.ONDORSE_API_KEY, 'length:', process.env.ONDORSE_API_KEY?.length)
   try {
     const body = await req.json()
     const result = await createApplication({

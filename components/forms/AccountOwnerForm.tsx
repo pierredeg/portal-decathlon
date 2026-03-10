@@ -12,11 +12,18 @@ const schema = z.object({
   last_name: z.string().min(1, 'Champ requis'),
   email: z.string().email('Email invalide'),
   role_in_company: z.string().min(1, 'Champ requis'),
-  birth_date_day: z.number().min(1).max(31),
-  birth_date_month: z.number().min(1).max(12),
-  birth_date_year: z.number().min(1900).max(new Date().getFullYear() - 18, {
-    message: 'Vous devez avoir au moins 18 ans',
-  }),
+  birth_date: z
+    .string()
+    .min(1, 'Date de naissance requise')
+    .refine((val) => {
+      const d = new Date(val)
+      if (Number.isNaN(d.getTime())) return false
+      const today = new Date()
+      let age = today.getFullYear() - d.getFullYear()
+      const m = today.getMonth() - d.getMonth()
+      if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1
+      return age >= 18
+    }, 'Vous devez avoir au moins 18 ans'),
   nationality: z.string().min(1, 'Champ requis'),
   address_single_line: z.string().min(1, 'Champ requis'),
   phone_number: z.string().min(1, 'Champ requis'),
@@ -44,6 +51,11 @@ export default function AccountOwnerForm() {
   const ownerData = state.sections.accountOwner.data
   const personalData = state.sections.personalInfo.data
 
+  const birthDateDefault =
+    personalData?.birth_date_year && personalData?.birth_date_month && personalData?.birth_date_day
+      ? `${personalData.birth_date_year}-${String(personalData.birth_date_month).padStart(2, '0')}-${String(personalData.birth_date_day).padStart(2, '0')}`
+      : ''
+
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -51,9 +63,7 @@ export default function AccountOwnerForm() {
       last_name: ownerData?.last_name ?? '',
       email: ownerData?.email ?? '',
       role_in_company: ownerData?.role_in_company ?? '',
-      birth_date_day: personalData?.birth_date_day ?? undefined,
-      birth_date_month: personalData?.birth_date_month ?? undefined,
-      birth_date_year: personalData?.birth_date_year ?? undefined,
+      birth_date: birthDateDefault,
       nationality: personalData?.nationality ?? '',
       address_single_line: personalData?.address_single_line ?? '',
       phone_number: personalData?.phone_number ?? '',
@@ -67,10 +77,11 @@ export default function AccountOwnerForm() {
       email: data.email,
       role_in_company: data.role_in_company,
     }
+    const [y, m, d] = data.birth_date.split('-').map(Number)
     const personalInfo: PersonalInfoData = {
-      birth_date_day: data.birth_date_day,
-      birth_date_month: data.birth_date_month,
-      birth_date_year: data.birth_date_year,
+      birth_date_day: d,
+      birth_date_month: m,
+      birth_date_year: y,
       nationality: data.nationality,
       address_single_line: data.address_single_line,
       phone_number: data.phone_number,
@@ -154,37 +165,15 @@ export default function AccountOwnerForm() {
         <label className="text-sm font-medium text-grey-900">
           Date de naissance <span className="text-danger">*</span>
         </label>
-        <div className="grid grid-cols-3 gap-3">
-          <input
-            {...register('birth_date_day', { valueAsNumber: true })}
-            type="number"
-            placeholder="JJ"
-            min={1}
-            max={31}
-            className={inputClass(!!errors.birth_date_day)}
-            style={{ borderWidth: '1.5px' }}
-          />
-          <input
-            {...register('birth_date_month', { valueAsNumber: true })}
-            type="number"
-            placeholder="MM"
-            min={1}
-            max={12}
-            className={inputClass(!!errors.birth_date_month)}
-            style={{ borderWidth: '1.5px' }}
-          />
-          <input
-            {...register('birth_date_year', { valueAsNumber: true })}
-            type="number"
-            placeholder="AAAA"
-            min={1900}
-            max={new Date().getFullYear()}
-            className={inputClass(!!errors.birth_date_year)}
-            style={{ borderWidth: '1.5px' }}
-          />
-        </div>
-        {(errors.birth_date_day || errors.birth_date_month || errors.birth_date_year) && (
-          <p className="text-danger text-xs">Date de naissance invalide</p>
+        <input
+          {...register('birth_date')}
+          type="date"
+          max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().slice(0, 10)}
+          className={inputClass(!!errors.birth_date)}
+          style={{ borderWidth: '1.5px' }}
+        />
+        {errors.birth_date && (
+          <p className="text-danger text-xs">{errors.birth_date.message}</p>
         )}
       </div>
 

@@ -53,12 +53,37 @@ export async function createApplication(payload: ApplicationPayload): Promise<{ 
   const res = await fetch(`${baseUrl()}/api/applications`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ ...payload, is_draft: true }),
   })
 
   if (!res.ok) {
     const text = await res.text()
     throw new Error(`Ondorse createApplication failed: ${res.status} ${text}`)
+  }
+
+  return res.json()
+}
+
+export async function submitApplication(applicationId: string): Promise<void> {
+  const res = await fetch(`${baseUrl()}/api/applications/${applicationId}/submit`, {
+    method: 'PUT',
+    headers: authHeaders(),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Ondorse submitApplication failed: ${res.status} ${text}`)
+  }
+}
+
+export async function getPortalConfiguration(): Promise<Record<string, unknown>> {
+  const res = await fetch(`${baseUrl()}/api/portal/configuration`, {
+    headers: authHeaders(),
+  })
+
+  if (!res.ok) {
+    const text = await res.text()
+    throw new Error(`Ondorse getPortalConfiguration failed: ${res.status} ${text}`)
   }
 
   return res.json()

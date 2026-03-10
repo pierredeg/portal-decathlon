@@ -36,12 +36,22 @@ export interface RelationPerson {
   birth_date_month?: number
   birth_date_year?: number
   address_single_line?: string
+  fromEnrichment?: boolean
 }
 
 export interface DocumentFile {
   file: File | null
   fileName: string | null
   fileId?: string
+  expectedDocumentId?: string
+}
+
+export interface ExpectedDocument {
+  id: string
+  name: string
+  slug: string
+  is_mandatory: boolean
+  person_specific: boolean
 }
 
 export interface PersonDocuments {
@@ -54,6 +64,7 @@ export interface PersonDocuments {
 export interface DocumentsData {
   kbis: DocumentFile
   personDocuments: PersonDocuments[]
+  expectedDocuments?: ExpectedDocument[]
 }
 
 export interface SectionState<T> {
@@ -63,6 +74,7 @@ export interface SectionState<T> {
 
 export interface PortalState {
   applicationId: string | null
+  relationsEnriched: boolean
   sections: {
     businessInfo: SectionState<BusinessInfoData>
     accountOwner: SectionState<AccountOwnerData>

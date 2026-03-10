@@ -22,11 +22,13 @@ type SectionDataMap = {
 type Action =
   | { type: 'UPDATE_SECTION'; key: SectionKey; data: SectionDataMap[SectionKey] }
   | { type: 'SET_APPLICATION_ID'; id: string }
+  | { type: 'SET_ENRICHED'; persons: RelationPerson[] }
   | { type: 'RESET_PORTAL' }
   | { type: 'HYDRATE'; state: PortalState }
 
 const initialState: PortalState = {
   applicationId: null,
+  relationsEnriched: false,
   sections: {
     businessInfo: { completed: false, data: null },
     accountOwner: { completed: false, data: null },
@@ -51,10 +53,23 @@ function reducer(state: PortalState, action: Action): PortalState {
       }
     case 'SET_APPLICATION_ID':
       return { ...state, applicationId: action.id }
+    case 'SET_ENRICHED':
+      return {
+        ...state,
+        relationsEnriched: true,
+        sections: {
+          ...state.sections,
+          relations: {
+            // Mark completed only if not already completed by user
+            completed: state.sections.relations.completed,
+            data: action.persons,
+          },
+        },
+      }
     case 'RESET_PORTAL':
       return initialState
     case 'HYDRATE':
-      return action.state
+      return { ...initialState, ...action.state }
     default:
       return state
   }
@@ -64,6 +79,7 @@ interface PortalContextValue {
   state: PortalState
   updateSection: <K extends SectionKey>(key: K, data: SectionDataMap[K]) => void
   setApplicationId: (id: string) => void
+  setEnriched: (persons: RelationPerson[]) => void
   resetPortal: () => void
 }
 
@@ -71,7 +87,25 @@ const PortalContext = createContext<PortalContextValue | null>(null)
 
 const STORAGE_KEY = 'portal_decathlon_state'
 
-// Serialize state to localStorage (skip File objects)
+function stripFileObjects(data: DocumentsData | null): DocumentsData | null {
+  if (!data) return null
+  const stripDoc = (d: { file: File | null; fileName: string | null; fileId?: string; expectedDocumentId?: string }) => ({
+    file: null,
+    fileName: d.fileName,
+    fileId: d.fileId,
+    expectedDocumentId: d.expectedDocumentId,
+  })
+  return {
+    kbis: stripDoc(data.kbis),
+    personDocuments: data.personDocuments.map((pd) => ({
+      ...pd,
+      front: stripDoc(pd.front),
+      back: stripDoc(pd.back),
+    })),
+    expectedDocuments: data.expectedDocuments,
+  }
+}
+
 function serializeState(state: PortalState): string {
   const serializable = {
     ...state,
@@ -79,7 +113,7 @@ function serializeState(state: PortalState): string {
       ...state.sections,
       documents: {
         ...state.sections.documents,
-        data: null, // Don't persist File objects
+        data: stripFileObjects(state.sections.documents.data),
       },
     },
   }
@@ -89,7 +123,6 @@ function serializeState(state: PortalState): string {
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
-  // Hydrate from localStorage on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY)
@@ -102,7 +135,6 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  // Persist to localStorage whenever state changes
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, serializeState(state))
@@ -119,12 +151,30 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'SET_APPLICATION_ID', id })
   }, [])
 
+  const setEnriched = useCallback((persons: RelationPerson[]) => {
+    dispatch({ type: 'SET_ENRICHED', persons })
+    // Persist synchronously so router.push doesn't race with useEffect
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY)
+      const current = stored ? JSON.parse(stored) as PortalState : initialState
+      const updated = {
+        ...current,
+        relationsEnriched: true,
+        sections: {
+          ...current.sections,
+          relations: { completed: current.sections.relations.completed, data: persons },
+        },
+      }
+      localStorage.setItem(STORAGE_KEY, serializeState(updated))
+    } catch { /* ignore */ }
+  }, [])
+
   const resetPortal = useCallback(() => {
     dispatch({ type: 'RESET_PORTAL' })
   }, [])
 
   return (
-    <PortalContext.Provider value={{ state, updateSection, setApplicationId, resetPortal }}>
+    <PortalContext.Provider value={{ state, updateSection, setApplicationId, setEnriched, resetPortal }}>
       {children}
     </PortalContext.Provider>
   )

@@ -1,10 +1,10 @@
 'use client'
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDropzone, type FileRejection } from 'react-dropzone'
 import { usePortal } from '@/lib/store'
 import { useRouter } from 'next/navigation'
-import type { DocumentFile, DocumentsData, PersonDocuments } from '@/types/portal'
+import type { DocumentFile, DocumentsData, PersonDocuments, ExpectedDocument } from '@/types/portal'
 
 const ACCEPTED_TYPES = { 'image/*': ['.jpg', '.jpeg', '.png'], 'application/pdf': ['.pdf'] }
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -30,10 +30,10 @@ function FileDropzone({
       }
       if (accepted[0]) {
         setError(null)
-        onChange({ file: accepted[0], fileName: accepted[0].name })
+        onChange({ ...value, file: accepted[0], fileName: accepted[0].name })
       }
     },
-    [onChange]
+    [onChange, value]
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -56,7 +56,7 @@ function FileDropzone({
           </div>
           <button
             type="button"
-            onClick={() => onChange({ file: null, fileName: null })}
+            onClick={() => onChange({ file: null, fileName: null, expectedDocumentId: value.expectedDocumentId })}
             className="text-grey-600 hover:text-danger transition-colors text-sm"
           >
             <i className="ri-close-line" />
@@ -93,14 +93,58 @@ export default function DocumentsForm() {
   const relationsData = state.sections.relations.data ?? []
   const existing = state.sections.documents.data
 
-  const [kbis, setKbis] = useState<DocumentFile>(existing?.kbis ?? { file: null, fileName: null })
+  // Load expected documents from portal config
+  const [expectedDocs, setExpectedDocs] = useState<ExpectedDocument[]>(existing?.expectedDocuments ?? [])
+  const [configLoading, setConfigLoading] = useState(false)
+
+  useEffect(() => {
+    if (existing?.expectedDocuments?.length) return
+    let cancelled = false
+    setConfigLoading(true)
+    fetch('/api/portal-config')
+      .then((res) => {
+        if (!res.ok) throw new Error(`Portal config failed: ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        if (cancelled) return
+        console.log('[Documents] Portal config loaded:', data)
+        if (data.expectedDocuments?.length > 0) {
+          setExpectedDocs(data.expectedDocuments)
+        }
+      })
+      .catch(() => {
+        // Portal config not available — fallback to generic document upload
+      })
+      .finally(() => { if (!cancelled) setConfigLoading(false) })
+    return () => { cancelled = true }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Split expected docs into company-level and person-level
+  const companyDocs = expectedDocs.filter((d) => !d.person_specific)
+  const personExpectedDocs = expectedDocs.filter((d) => d.person_specific)
+
+  // Company-level document files (one per expected document)
+  const [companyFiles, setCompanyFiles] = useState<DocumentFile[]>(
+    existing?.kbis
+      ? [existing.kbis]
+      : companyDocs.map((d) => ({ file: null, fileName: null, expectedDocumentId: d.id }))
+  )
+
+  // Sync companyFiles when expectedDocs load
+  useEffect(() => {
+    if (companyDocs.length > 0 && companyFiles.length === 0) {
+      setCompanyFiles(companyDocs.map((d) => ({ file: null, fileName: null, expectedDocumentId: d.id })))
+    }
+  }, [companyDocs.length, companyFiles.length])
+
   const [personDocs, setPersonDocs] = useState<PersonDocuments[]>(
     existing?.personDocuments ??
       relationsData.map((p) => ({
         personId: p.id,
         personName: `${p.given_names} ${p.last_name}`,
-        front: { file: null, fileName: null },
-        back: { file: null, fileName: null },
+        front: { file: null, fileName: null, expectedDocumentId: personExpectedDocs[0]?.id },
+        back: { file: null, fileName: null, expectedDocumentId: personExpectedDocs[0]?.id },
       }))
   )
 
@@ -110,31 +154,105 @@ export default function DocumentsForm() {
     )
   }
 
-  function handleSave() {
-    const data: DocumentsData = { kbis, personDocuments: personDocs }
-    updateSection('documents', data)
-    router.push('/dashboard')
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+
+  async function uploadSingleFile(doc: DocumentFile): Promise<DocumentFile> {
+    if (!doc.file || doc.fileId) return doc
+    const form = new FormData()
+    form.append('file', doc.file)
+    const res = await fetch('/api/files', { method: 'POST', body: form })
+    if (!res.ok) throw new Error(`Upload failed: ${doc.fileName}`)
+    const { fileId } = await res.json()
+    return { ...doc, fileId }
   }
 
-  const kbisOk = !!kbis.fileName
+  async function handleSave() {
+    setUploading(true)
+    setUploadError(null)
+    try {
+      const uploadedCompanyFiles = await Promise.all(companyFiles.map(uploadSingleFile))
+      setCompanyFiles(uploadedCompanyFiles)
+
+      const uploadedPersonDocs = await Promise.all(
+        personDocs.map(async (pd) => ({
+          ...pd,
+          front: await uploadSingleFile(pd.front),
+          back: await uploadSingleFile(pd.back),
+        }))
+      )
+      setPersonDocs(uploadedPersonDocs)
+
+      const data: DocumentsData = {
+        kbis: uploadedCompanyFiles[0] ?? { file: null, fileName: null },
+        personDocuments: uploadedPersonDocs,
+        expectedDocuments: expectedDocs,
+      }
+      updateSection('documents', data)
+      router.push('/dashboard')
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Erreur lors de l\'upload')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const hasAtLeastOneFile = companyFiles.some((f) => !!f.fileName)
+
+  if (configLoading) {
+    return (
+      <div className="flex items-center gap-2 text-brand-500 text-sm py-8 justify-center">
+        <i className="ri-loader-4-line animate-spin" />
+        Chargement de la configuration...
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Kbis */}
-      <div className="bg-white rounded-[12px] border border-grey-200 p-5" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center">
-            <i className="ri-file-text-line text-brand-500" />
+      {/* Company documents */}
+      {companyDocs.length > 0 ? (
+        <div className="bg-white rounded-[12px] border border-grey-200 p-5" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center">
+              <i className="ri-file-text-line text-brand-500" />
+            </div>
+            <h3 className="font-condensed font-bold text-grey-900">Documents d&apos;entreprise</h3>
           </div>
-          <h3 className="font-condensed font-bold text-grey-900">Document d&apos;entreprise</h3>
+          <div className="flex flex-col gap-4">
+            {companyDocs.map((doc, i) => (
+              <FileDropzone
+                key={doc.id}
+                label={`${doc.name}${doc.is_mandatory ? ' *' : ''}`}
+                value={companyFiles[i] ?? { file: null, fileName: null, expectedDocumentId: doc.id }}
+                onChange={(f) => {
+                  setCompanyFiles((prev) => {
+                    const next = [...prev]
+                    next[i] = { ...f, expectedDocumentId: doc.id }
+                    return next
+                  })
+                }}
+              />
+            ))}
+          </div>
         </div>
-        <FileDropzone
-          label="Extrait Kbis ou équivalent *"
-          hint="Document officiel d'enregistrement de votre entreprise (moins de 3 mois)"
-          value={kbis}
-          onChange={setKbis}
-        />
-      </div>
+      ) : (
+        // Fallback: generic Kbis upload if no portal config
+        <div className="bg-white rounded-[12px] border border-grey-200 p-5" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-full bg-brand-50 flex items-center justify-center">
+              <i className="ri-file-text-line text-brand-500" />
+            </div>
+            <h3 className="font-condensed font-bold text-grey-900">Document d&apos;entreprise</h3>
+          </div>
+          <FileDropzone
+            label="Extrait Kbis ou équivalent *"
+            hint="Document officiel d'enregistrement de votre entreprise (moins de 3 mois)"
+            value={companyFiles[0] ?? { file: null, fileName: null }}
+            onChange={(f) => setCompanyFiles([f])}
+          />
+        </div>
+      )}
 
       {/* Person documents */}
       {personDocs.length > 0 && (
@@ -165,6 +283,13 @@ export default function DocumentsForm() {
         </div>
       )}
 
+      {uploadError && (
+        <div className="flex items-center gap-2 text-danger text-sm bg-danger/5 border border-danger/20 rounded-[8px] px-4 py-2.5">
+          <i className="ri-error-warning-line" />
+          {uploadError}
+        </div>
+      )}
+
       {relationsData.length === 0 && (
         <div className="bg-brand-50 rounded-[8px] p-4 flex items-start gap-3">
           <i className="ri-information-line text-brand-500 mt-0.5" />
@@ -187,15 +312,24 @@ export default function DocumentsForm() {
         <button
           type="button"
           onClick={handleSave}
-          disabled={!kbisOk}
+          disabled={!hasAtLeastOneFile || uploading}
           className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-[100px] font-bold text-sm transition-colors ${
-            kbisOk
+            hasAtLeastOneFile && !uploading
               ? 'bg-brand-500 hover:bg-brand-600 text-white'
               : 'bg-grey-200 text-grey-600 cursor-not-allowed'
           }`}
         >
-          Sauvegarder
-          <i className="ri-check-line" />
+          {uploading ? (
+            <>
+              <i className="ri-loader-4-line animate-spin" />
+              Upload en cours...
+            </>
+          ) : (
+            <>
+              Sauvegarder
+              <i className="ri-check-line" />
+            </>
+          )}
         </button>
       </div>
     </div>
