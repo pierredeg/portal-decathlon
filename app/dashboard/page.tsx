@@ -40,18 +40,9 @@ const SECTIONS = [
     href: '/sections/documents',
     required: true,
   },
-  {
-    key: null,
-    title: 'Vérification d\'identité',
-    description: 'Vérification biométrique — disponible dans une prochaine version.',
-    icon: 'ri-shield-check-line',
-    href: '#',
-    required: false,
-  },
 ]
 
 function isSectionComplete(state: import('@/types/portal').PortalState, section: (typeof SECTIONS)[number]) {
-  if (section.key === null) return false
   const completesWith = 'completesWith' in section && section.completesWith
   if (completesWith) {
     return completesWith.every((k) => state.sections[k].completed)
@@ -84,32 +75,8 @@ export default function DashboardPage() {
         {/* Cards grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {SECTIONS.map((section) => {
-            const isCompleted = section.key !== null ? isSectionComplete(state, section) : false
-            const isDisabled = section.key === null
-
-            if (isDisabled) {
-              return (
-                <div
-                  key={section.title}
-                  className="bg-white rounded-[12px] border border-grey-200 p-5 flex flex-col gap-4 opacity-60"
-                  style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="w-10 h-10 rounded-full bg-grey-100 flex items-center justify-center">
-                      <i className={`${section.icon} text-lg text-grey-600`} />
-                    </div>
-                    <span className="text-grey-600 text-xs bg-grey-100 px-2 py-0.5 rounded-full">Bientôt</span>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <h3 className="font-condensed font-bold text-grey-900 text-base">{section.title}</h3>
-                    <p className="text-grey-600 text-sm">{section.description}</p>
-                  </div>
-                </div>
-              )
-            }
-
+            const isCompleted = isSectionComplete(state, section)
             const enrichedBadge = section.key === 'relations' && state.relationsEnriched
-
             return (
               <SectionCard
                 key={section.key}

@@ -5,6 +5,7 @@ import { useDropzone, type FileRejection } from 'react-dropzone'
 import { usePortal } from '@/lib/store'
 import { useRouter } from 'next/navigation'
 import type { DocumentFile, DocumentsData, PersonDocuments, ExpectedDocument } from '@/types/portal'
+import { isPersonDocument, isCompanyDocument } from '@/types/portal'
 
 const ACCEPTED_TYPES = { 'image/*': ['.jpg', '.jpeg', '.png'], 'application/pdf': ['.pdf'] }
 const MAX_SIZE = 10 * 1024 * 1024 // 10MB
@@ -86,6 +87,29 @@ function FileDropzone({
   )
 }
 
+// Label for person-specific doc sections based on attached_to
+function personDocSectionLabel(attachedTo: string): string {
+  switch (attachedTo) {
+    case 'PERSON_DIRECTOR': return 'Directors'
+    case 'PERSON_UBO': return 'Bénéficiaires effectifs (UBOs)'
+    case 'PERSON_SHAREHOLDER': return 'Actionnaires'
+    case 'ACCOUNT_OWNER': return 'Propriétaire du compte'
+    default: return 'Personnes'
+  }
+}
+
+// Check if a relation matches a document's attached_to
+function relationMatchesAttachedTo(roles: string[], attachedTo: string): boolean {
+  switch (attachedTo) {
+    case 'PERSON_DIRECTOR': return roles.includes('DIRECTOR')
+    case 'PERSON_UBO': return roles.includes('UBO')
+    case 'PERSON_SHAREHOLDER': return roles.includes('SHAREHOLDER')
+    case 'ACCOUNT_OWNER': return roles.includes('ACCOUNT_OWNER')
+    case 'PERSON': return true // generic person doc applies to all
+    default: return true
+  }
+}
+
 export default function DocumentsForm() {
   const { state, updateSection } = usePortal()
   const router = useRouter()
@@ -120,14 +144,14 @@ export default function DocumentsForm() {
     return () => { cancelled = true }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Split expected docs into company-level and person-level
-  const companyDocs = expectedDocs.filter((d) => !d.person_specific)
-  const personExpectedDocs = expectedDocs.filter((d) => d.person_specific)
+  // Split expected docs into company-level and person-level using attached_to
+  const companyDocs = expectedDocs.filter(isCompanyDocument)
+  const personExpectedDocs = expectedDocs.filter(isPersonDocument)
 
   // Company-level document files (one per expected document)
   const [companyFiles, setCompanyFiles] = useState<DocumentFile[]>(
-    existing?.kbis
-      ? [existing.kbis]
+    existing?.companyFiles?.length
+      ? existing.companyFiles
       : companyDocs.map((d) => ({ file: null, fileName: null, expectedDocumentId: d.id }))
   )
 
@@ -138,19 +162,58 @@ export default function DocumentsForm() {
     }
   }, [companyDocs.length, companyFiles.length])
 
-  const [personDocs, setPersonDocs] = useState<PersonDocuments[]>(
-    existing?.personDocuments ??
-      relationsData.map((p) => ({
-        personId: p.id,
-        personName: `${p.given_names} ${p.last_name}`,
-        front: { file: null, fileName: null, expectedDocumentId: personExpectedDocs[0]?.id },
-        back: { file: null, fileName: null, expectedDocumentId: personExpectedDocs[0]?.id },
-      }))
-  )
+  // Person documents: only create entries for person-specific expected docs + matching relations
+  const [personDocs, setPersonDocs] = useState<PersonDocuments[]>(() => {
+    if (existing?.personDocuments?.length) return existing.personDocuments
 
-  function updatePersonDoc(personId: string, side: 'front' | 'back', doc: DocumentFile) {
+    const entries: PersonDocuments[] = []
+    for (const expectedDoc of personExpectedDocs) {
+      for (const person of relationsData) {
+        if (relationMatchesAttachedTo(person.roles, expectedDoc.attached_to)) {
+          entries.push({
+            personId: person.id,
+            personName: `${person.given_names} ${person.last_name}`,
+            expectedDocumentId: expectedDoc.id,
+            expectedDocumentName: expectedDoc.name,
+            front: { file: null, fileName: null, expectedDocumentId: expectedDoc.id },
+            back: { file: null, fileName: null, expectedDocumentId: expectedDoc.id },
+          })
+        }
+      }
+    }
+    return entries
+  })
+
+  // Re-sync person docs when expected docs or relations change
+  useEffect(() => {
+    if (personExpectedDocs.length === 0 || relationsData.length === 0) return
+    if (personDocs.length > 0) return // already initialized
+
+    const entries: PersonDocuments[] = []
+    for (const expectedDoc of personExpectedDocs) {
+      for (const person of relationsData) {
+        if (relationMatchesAttachedTo(person.roles, expectedDoc.attached_to)) {
+          entries.push({
+            personId: person.id,
+            personName: `${person.given_names} ${person.last_name}`,
+            expectedDocumentId: expectedDoc.id,
+            expectedDocumentName: expectedDoc.name,
+            front: { file: null, fileName: null, expectedDocumentId: expectedDoc.id },
+            back: { file: null, fileName: null, expectedDocumentId: expectedDoc.id },
+          })
+        }
+      }
+    }
+    if (entries.length > 0) setPersonDocs(entries)
+  }, [personExpectedDocs.length, relationsData.length]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function updatePersonDoc(personId: string, expectedDocId: string, side: 'front' | 'back', doc: DocumentFile) {
     setPersonDocs((prev) =>
-      prev.map((pd) => (pd.personId === personId ? { ...pd, [side]: doc } : pd))
+      prev.map((pd) =>
+        pd.personId === personId && pd.expectedDocumentId === expectedDocId
+          ? { ...pd, [side]: doc }
+          : pd
+      )
     )
   }
 
@@ -184,7 +247,8 @@ export default function DocumentsForm() {
       setPersonDocs(uploadedPersonDocs)
 
       const data: DocumentsData = {
-        kbis: uploadedCompanyFiles[0] ?? { file: null, fileName: null },
+        kbis: { file: null, fileName: null }, // legacy field, kept for compat
+        companyFiles: uploadedCompanyFiles,
         personDocuments: uploadedPersonDocs,
         expectedDocuments: expectedDocs,
       }
@@ -254,32 +318,63 @@ export default function DocumentsForm() {
         </div>
       )}
 
-      {/* Person documents */}
-      {personDocs.length > 0 && (
+      {/* Person documents — grouped by expected document type */}
+      {personExpectedDocs.length > 0 && personDocs.length > 0 && (
         <div className="flex flex-col gap-4">
-          <h3 className="font-condensed font-bold text-grey-900">Pièces d&apos;identité</h3>
-          {personDocs.map((pd) => (
-            <div key={pd.personId} className="bg-white rounded-[12px] border border-grey-200 p-5" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-8 h-8 rounded-full bg-grey-100 flex items-center justify-center">
-                  <i className="ri-user-line text-grey-600" />
+          {personExpectedDocs.map((expectedDoc) => {
+            const docsForType = personDocs.filter((pd) => pd.expectedDocumentId === expectedDoc.id)
+            if (docsForType.length === 0) return null
+            return (
+              <div key={expectedDoc.id}>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="font-condensed font-bold text-grey-900">
+                    {expectedDoc.name} — {personDocSectionLabel(expectedDoc.attached_to)}
+                  </h3>
+                  {expectedDoc.is_mandatory && <span className="text-xs text-danger">*</span>}
                 </div>
-                <p className="font-medium text-grey-900 text-sm">{pd.personName}</p>
+                <div className="flex flex-col gap-4">
+                  {docsForType.map((pd) => (
+                    <div key={`${pd.personId}-${expectedDoc.id}`} className="bg-white rounded-[12px] border border-grey-200 p-5" style={{ boxShadow: '0 1px 3px rgba(0,16,24,.08)' }}>
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-full bg-grey-100 flex items-center justify-center">
+                          <i className="ri-user-line text-grey-600" />
+                        </div>
+                        <p className="font-medium text-grey-900 text-sm">{pd.personName}</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FileDropzone
+                          label="Recto"
+                          value={pd.front}
+                          onChange={(f) => updatePersonDoc(pd.personId, expectedDoc.id, 'front', f)}
+                        />
+                        <FileDropzone
+                          label="Verso"
+                          value={pd.back}
+                          onChange={(f) => updatePersonDoc(pd.personId, expectedDoc.id, 'back', f)}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <FileDropzone
-                  label="Recto"
-                  value={pd.front}
-                  onChange={(f) => updatePersonDoc(pd.personId, 'front', f)}
-                />
-                <FileDropzone
-                  label="Verso"
-                  value={pd.back}
-                  onChange={(f) => updatePersonDoc(pd.personId, 'back', f)}
-                />
-              </div>
-            </div>
-          ))}
+            )
+          })}
+        </div>
+      )}
+
+      {/* No person docs to show if config doesn't require them */}
+      {personExpectedDocs.length === 0 && relationsData.length > 0 && (
+        <div className="bg-grey-50 rounded-[8px] p-4 text-sm text-grey-600">
+          Aucun document d&apos;identité n&apos;est requis pour les personnes associées selon la configuration.
+        </div>
+      )}
+
+      {relationsData.length === 0 && personExpectedDocs.length > 0 && (
+        <div className="bg-brand-50 rounded-[8px] p-4 flex items-start gap-3">
+          <i className="ri-information-line text-brand-500 mt-0.5" />
+          <p className="text-sm text-brand-500">
+            Complétez la section <strong>Relations d&apos;entreprise</strong> pour ajouter les pièces d&apos;identité des personnes associées.
+          </p>
         </div>
       )}
 
@@ -287,15 +382,6 @@ export default function DocumentsForm() {
         <div className="flex items-center gap-2 text-danger text-sm bg-danger/5 border border-danger/20 rounded-[8px] px-4 py-2.5">
           <i className="ri-error-warning-line" />
           {uploadError}
-        </div>
-      )}
-
-      {relationsData.length === 0 && (
-        <div className="bg-brand-50 rounded-[8px] p-4 flex items-start gap-3">
-          <i className="ri-information-line text-brand-500 mt-0.5" />
-          <p className="text-sm text-brand-500">
-            Complétez la section <strong>Relations d&apos;entreprise</strong> pour ajouter les pièces d&apos;identité des personnes associées.
-          </p>
         </div>
       )}
 

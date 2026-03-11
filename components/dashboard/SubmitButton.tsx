@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePortal } from '@/lib/store'
+import { isPersonDocument } from '@/types/portal'
 
 export default function SubmitButton() {
   const { state } = usePortal()
@@ -48,27 +49,77 @@ export default function SubmitButton() {
         applicationId = result.applicationId
       }
 
+      // Fetch persons from the application to get their Ondorse person_ids
+      let ondorsePersons: { id: string; given_names?: string; last_name?: string; roles?: string[] }[] = []
+      try {
+        const personsRes = await fetch(`/api/applications/${applicationId}/persons`)
+        if (personsRes.ok) {
+          const personsData = await personsRes.json()
+          ondorsePersons = Array.isArray(personsData) ? personsData : (personsData.persons ?? personsData.data ?? [])
+          console.log('[Submit] Ondorse persons:', ondorsePersons)
+        }
+      } catch (e) {
+        console.warn('[Submit] Could not fetch persons:', e)
+      }
+
       // Link uploaded documents to the application
       const docsData = state.sections.documents.data
       if (docsData) {
-        const documents: { fileId: string; expectedDocumentId: string }[] = []
-        if (docsData.kbis.fileId) {
+        const documents: {
+          name: string
+          expectedDocumentId: string
+          files: { fileId: string; side: 'front' | 'back' }[]
+          applicationId?: string
+          personId?: string
+        }[] = []
+
+        // Company documents — prefer companyFiles array, fallback to kbis only if no companyFiles
+        const companyFiles = docsData.companyFiles?.length
+          ? docsData.companyFiles
+          : (docsData.kbis.fileId ? [docsData.kbis] : [])
+        const expectedDocs = docsData.expectedDocuments ?? []
+        for (const cf of companyFiles) {
+          if (!cf.fileId) continue
+          const expectedDoc = expectedDocs.find((d) => d.id === cf.expectedDocumentId)
           documents.push({
-            fileId: docsData.kbis.fileId,
-            expectedDocumentId: docsData.kbis.expectedDocumentId || '',
+            name: expectedDoc?.name ?? 'Document',
+            expectedDocumentId: cf.expectedDocumentId || '',
+            files: [{ fileId: cf.fileId, side: 'front' }],
+            applicationId: applicationId!,
           })
         }
+
+        // Person documents — match portal person to Ondorse person by name
         for (const pd of docsData.personDocuments) {
-          if (pd.front.fileId) {
+          const files: { fileId: string; side: 'front' | 'back' }[] = []
+          if (pd.front.fileId) files.push({ fileId: pd.front.fileId, side: 'front' })
+          if (pd.back.fileId) files.push({ fileId: pd.back.fileId, side: 'back' })
+          if (files.length === 0) continue
+
+          // Find matching Ondorse person by name
+          const ondorsePerson = ondorsePersons.find((op) => {
+            const opName = `${op.given_names ?? ''} ${op.last_name ?? ''}`.trim().toLowerCase()
+            return opName === pd.personName.trim().toLowerCase()
+          })
+
+          const expectedDoc = expectedDocs.find((d) => d.id === pd.expectedDocumentId)
+
+          if (ondorsePerson) {
+            // Person doc → use person_id
             documents.push({
-              fileId: pd.front.fileId,
-              expectedDocumentId: pd.front.expectedDocumentId || '',
+              name: expectedDoc?.name ?? pd.expectedDocumentName ?? 'ID',
+              expectedDocumentId: pd.expectedDocumentId || pd.front.expectedDocumentId || '',
+              files,
+              personId: ondorsePerson.id,
             })
-          }
-          if (pd.back.fileId) {
+          } else {
+            // Fallback: attach to application
+            console.warn('[Submit] No Ondorse person found for:', pd.personName)
             documents.push({
-              fileId: pd.back.fileId,
-              expectedDocumentId: pd.back.expectedDocumentId || '',
+              name: expectedDoc?.name ?? pd.expectedDocumentName ?? 'ID',
+              expectedDocumentId: pd.expectedDocumentId || pd.front.expectedDocumentId || '',
+              files,
+              applicationId: applicationId!,
             })
           }
         }
@@ -77,11 +128,15 @@ export default function SubmitButton() {
           const docRes = await fetch('/api/documents', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ applicationId, documents }),
+            body: JSON.stringify({ documents }),
           })
           if (!docRes.ok) {
-            console.error('[Submit] Documents linking failed:', await docRes.text())
+            const errText = await docRes.text()
+            console.error('[Submit] Documents linking failed:', errText)
+            throw new Error('Erreur lors de l\'envoi des documents. Réessayez ou contactez le support.')
           }
+          const docResult = await docRes.json()
+          console.log('[Submit] Documents linked:', docResult)
         }
       }
 
@@ -90,7 +145,9 @@ export default function SubmitButton() {
         method: 'PUT',
       })
       if (!submitRes.ok) {
-        console.error('[Submit] Application submit failed:', await submitRes.text())
+        const errText = await submitRes.text()
+        console.error('[Submit] Application submit failed:', errText)
+        throw new Error('Erreur lors de la soumission du dossier. Réessayez ou contactez le support.')
       }
 
       router.push(`/confirmation?ref=${applicationId}`)

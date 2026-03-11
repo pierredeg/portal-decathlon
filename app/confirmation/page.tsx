@@ -1,23 +1,29 @@
 'use client'
 
 import { Suspense } from 'react'
-import { useSearchParams } from 'next/navigation'
-import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { usePortal } from '@/lib/store'
 
 function ConfirmationContent() {
   const params = useSearchParams()
+  const router = useRouter()
+  const { resetPortal } = usePortal()
   const ref = params.get('ref')
+
+  function handleBackToHome() {
+    resetPortal()
+    router.push('/')
+  }
 
   return (
     <div className="min-h-screen bg-grey-50 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-lg flex flex-col items-center text-center gap-8">
-        {/* Logo */}
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-md bg-brand-500 flex items-center justify-center">
-            <span className="text-white font-condensed font-bold text-base">D</span>
-          </div>
-          <span className="font-condensed font-bold text-lg text-grey-900 tracking-tight">DÉCATHLON</span>
-        </div>
+        {/* Logo Décathlon */}
+        <img
+          src="/logo-decathlon.svg"
+          alt="Décathlon"
+          className="h-20 w-auto"
+        />
 
         {/* Success icon */}
         <div className="w-20 h-20 rounded-full bg-success/10 flex items-center justify-center">
@@ -69,13 +75,14 @@ function ConfirmationContent() {
           ))}
         </div>
 
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-brand-500 text-sm font-medium hover:underline"
+        <button
+          type="button"
+          onClick={handleBackToHome}
+          className="inline-flex items-center gap-2 text-brand-500 text-sm font-medium hover:underline mb-10"
         >
           <i className="ri-home-line" />
           Retour à l&apos;accueil
-        </Link>
+        </button>
       </div>
     </div>
   )

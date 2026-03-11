@@ -49,18 +49,13 @@ export async function GET() {
       ? docs.filter((d: Record<string, unknown>) => expectedDocumentIds.includes(d.id as string))
       : docs
 
-    const PERSON_ATTACHED = ['person', 'directors', 'ubos', 'shareholders', 'all_directors', 'all_ubos', 'all_shareholders']
-    const result = filtered.map((d: Record<string, unknown>) => {
-      const attachedTo = (d.attached_to as string) || 'application'
-      return {
-        id: d.id as string,
-        name: (d.name as string) || (d.slug as string) || 'Document',
-        slug: (d.slug as string) || '',
-        is_mandatory: !!(d.is_required_in_onboarding_portal ?? d.is_mandatory ?? true),
-        attached_to: attachedTo,
-        person_specific: PERSON_ATTACHED.includes(attachedTo.toLowerCase()),
-      }
-    })
+    const result = filtered.map((d: Record<string, unknown>) => ({
+      id: d.id as string,
+      name: (d.name as string) || (d.slug as string) || 'Document',
+      slug: (d.slug as string) || '',
+      is_mandatory: !!(d.is_required_in_onboarding_portal ?? d.is_mandatory ?? true),
+      attached_to: (d.attached_to as string) || 'APPLICATION_BUSINESS',
+    }))
 
     return NextResponse.json({ expectedDocuments: result, expectedDocumentIds })
   } catch (err) {

@@ -51,18 +51,35 @@ export interface ExpectedDocument {
   name: string
   slug: string
   is_mandatory: boolean
-  person_specific: boolean
+  attached_to: string
+}
+
+// Helper to check if an expected document is person-specific based on attached_to
+export function isPersonDocument(doc: ExpectedDocument): boolean {
+  const personAttachedTo = [
+    'PERSON', 'ACCOUNT_OWNER', 'PERSON_DIRECTOR', 'PERSON_UBO', 'PERSON_SHAREHOLDER',
+    'RELATED_BUSINESS_DIRECTOR',
+  ]
+  return personAttachedTo.includes(doc.attached_to)
+}
+
+// Helper to check if an expected document is for company/business
+export function isCompanyDocument(doc: ExpectedDocument): boolean {
+  return !isPersonDocument(doc)
 }
 
 export interface PersonDocuments {
   personId: string
   personName: string
+  expectedDocumentId?: string
+  expectedDocumentName?: string
   front: DocumentFile
   back: DocumentFile
 }
 
 export interface DocumentsData {
   kbis: DocumentFile
+  companyFiles?: DocumentFile[]
   personDocuments: PersonDocuments[]
   expectedDocuments?: ExpectedDocument[]
 }

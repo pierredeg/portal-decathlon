@@ -7,40 +7,58 @@ function getConfig() {
   return { base, key }
 }
 
+interface DocumentRequest {
+  name: string
+  expectedDocumentId: string
+  files: { fileId: string; side: 'front' | 'back' }[]
+  // One of these must be set
+  applicationId?: string
+  personId?: string
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const { applicationId, documents } = await req.json() as {
-      applicationId: string
-      documents: { fileId: string; expectedDocumentId: string }[]
-    }
+    const { documents } = await req.json() as { documents: DocumentRequest[] }
 
-    if (!applicationId || !documents?.length) {
-      return NextResponse.json({ error: 'Missing applicationId or documents' }, { status: 400 })
+    if (!documents?.length) {
+      return NextResponse.json({ error: 'Missing documents' }, { status: 400 })
     }
 
     const { base, key } = getConfig()
     const results = []
 
-    for (const { fileId, expectedDocumentId } of documents) {
-      console.log('[documents] Creating document:', { applicationId, fileId, expectedDocumentId })
+    for (const doc of documents) {
+      const body: Record<string, unknown> = {
+        name: doc.name,
+        expected_document_id: doc.expectedDocumentId,
+        document_files: doc.files.map((f) => ({
+          file_id: f.fileId,
+          side: f.side,
+        })),
+      }
+
+      // Only one of application_id or person_id
+      if (doc.personId) {
+        body.person_id = doc.personId
+      } else if (doc.applicationId) {
+        body.application_id = doc.applicationId
+      }
+
+      console.log('[documents] Creating document:', JSON.stringify(body))
       const res = await fetch(`${base}/api/documents`, {
         method: 'POST',
         headers: { Authorization: key, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          application_id: applicationId,
-          file_id: fileId,
-          expected_document_id: expectedDocumentId,
-        }),
+        body: JSON.stringify(body),
       })
 
       if (!res.ok) {
         const text = await res.text()
         console.error('[documents] Ondorse error:', res.status, text)
-        results.push({ fileId, error: text })
+        results.push({ name: doc.name, error: text })
       } else {
         const data = await res.json()
         console.log('[documents] Created:', data.id)
-        results.push({ fileId, documentId: data.id })
+        results.push({ name: doc.name, documentId: data.id })
       }
     }
 
