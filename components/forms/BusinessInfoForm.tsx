@@ -47,10 +47,11 @@ export default function BusinessInfoForm() {
   const [enriching, setEnriching] = useState(false)
   const [enrichStatus, setEnrichStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
-  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<BusinessInfoData>({
+  const { register, handleSubmit, setValue, control, watch, formState: { errors } } = useForm<BusinessInfoData>({
     resolver: zodResolver(schema),
     defaultValues: existing ?? undefined,
   })
+  const watched = watch()
 
   const selectedCountry = useWatch({ control, name: 'country', defaultValue: 'FRA' })
 
@@ -131,10 +132,28 @@ export default function BusinessInfoForm() {
     router.push('/dashboard')
   }
 
-  const inputClass = (hasError: boolean) =>
-    `h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-      hasError ? 'border-danger' : 'border-grey-300'
+  const inputClass = (name: keyof BusinessInfoData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== ''
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
     }`
+  }
+  const selectClass = (name: keyof BusinessInfoData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== ''
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 bg-white outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
+    }`
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
@@ -159,8 +178,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('company_name')}
           placeholder="Ex : Ma Société SAS"
-          className={inputClass(!!errors.company_name)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('company_name', !!errors.company_name)}
         />
         {errors.company_name && <p className="text-danger text-xs">{errors.company_name.message}</p>}
       </div>
@@ -172,10 +190,7 @@ export default function BusinessInfoForm() {
         </label>
         <select
           {...register('country')}
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 bg-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.country ? 'border-danger' : 'border-grey-300'
-          }`}
-          style={{ borderWidth: '1.5px' }}
+          className={selectClass('country', !!errors.country)}
         >
           <option value="">Sélectionner un pays</option>
           {COUNTRIES.map(({ code, label }) => (
@@ -194,8 +209,7 @@ export default function BusinessInfoForm() {
           {...register('legal_form')}
           placeholder="Ex : SAS, SARL, SA..."
           list="legal-forms-list"
-          className={inputClass(!!errors.legal_form)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('legal_form', !!errors.legal_form)}
         />
         <datalist id="legal-forms-list">
           {LEGAL_FORMS.map((f) => <option key={f} value={f} />)}
@@ -211,8 +225,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('registration_number')}
           placeholder="Ex : 123 456 789"
-          className={inputClass(!!errors.registration_number)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('registration_number', !!errors.registration_number)}
         />
         {errors.registration_number && <p className="text-danger text-xs">{errors.registration_number.message}</p>}
       </div>
@@ -225,8 +238,7 @@ export default function BusinessInfoForm() {
         <input
           {...register('address')}
           placeholder="Ex : 4 Boulevard de Mons, 59650 Villeneuve-d'Ascq"
-          className={inputClass(!!errors.address)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('address', !!errors.address)}
         />
         {errors.address && <p className="text-danger text-xs">{errors.address.message}</p>}
       </div>

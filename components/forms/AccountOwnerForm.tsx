@@ -56,7 +56,7 @@ export default function AccountOwnerForm() {
       ? `${personalData.birth_date_year}-${String(personalData.birth_date_month).padStart(2, '0')}-${String(personalData.birth_date_day).padStart(2, '0')}`
       : ''
 
-  const { register, handleSubmit, formState: { errors } } = useForm<FormData>({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
       given_names: ownerData?.given_names ?? '',
@@ -69,6 +69,8 @@ export default function AccountOwnerForm() {
       phone_number: personalData?.phone_number ?? '',
     },
   })
+
+  const watched = watch()
 
   function onSubmit(data: FormData) {
     const accountOwner: AccountOwnerData = {
@@ -91,15 +93,29 @@ export default function AccountOwnerForm() {
     router.push('/dashboard')
   }
 
-  const inputClass = (hasError: boolean) =>
-    `h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-      hasError ? 'border-danger' : 'border-grey-300'
+  const inputClass = (name: keyof FormData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== ''
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
     }`
+  }
 
-  const selectClass = (hasError: boolean) =>
-    `h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 bg-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-      hasError ? 'border-danger' : 'border-grey-300'
+  const selectClass = (name: keyof FormData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== ''
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 bg-white outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
     }`
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
@@ -111,8 +127,7 @@ export default function AccountOwnerForm() {
           <input
             {...register('given_names')}
             placeholder="Jean"
-            className={inputClass(!!errors.given_names)}
-            style={{ borderWidth: '1.5px' }}
+            className={inputClass('given_names', !!errors.given_names)}
           />
           {errors.given_names && <p className="text-danger text-xs">{errors.given_names.message}</p>}
         </div>
@@ -123,8 +138,7 @@ export default function AccountOwnerForm() {
           <input
             {...register('last_name')}
             placeholder="Dupont"
-            className={inputClass(!!errors.last_name)}
-            style={{ borderWidth: '1.5px' }}
+            className={inputClass('last_name', !!errors.last_name)}
           />
           {errors.last_name && <p className="text-danger text-xs">{errors.last_name.message}</p>}
         </div>
@@ -138,8 +152,7 @@ export default function AccountOwnerForm() {
           {...register('email')}
           type="email"
           placeholder="jean.dupont@entreprise.com"
-          className={inputClass(!!errors.email)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('email', !!errors.email)}
         />
         {errors.email && <p className="text-danger text-xs">{errors.email.message}</p>}
       </div>
@@ -150,8 +163,7 @@ export default function AccountOwnerForm() {
         </label>
         <select
           {...register('role_in_company')}
-          className={selectClass(!!errors.role_in_company)}
-          style={{ borderWidth: '1.5px' }}
+          className={selectClass('role_in_company', !!errors.role_in_company)}
         >
           <option value="">Sélectionner un rôle</option>
           {ROLES.map((r) => (
@@ -169,8 +181,7 @@ export default function AccountOwnerForm() {
           {...register('birth_date')}
           type="date"
           max={new Date(new Date().setFullYear(new Date().getFullYear() - 18)).toISOString().slice(0, 10)}
-          className={inputClass(!!errors.birth_date)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('birth_date', !!errors.birth_date)}
         />
         {errors.birth_date && (
           <p className="text-danger text-xs">{errors.birth_date.message}</p>
@@ -183,8 +194,7 @@ export default function AccountOwnerForm() {
         </label>
         <select
           {...register('nationality')}
-          className={selectClass(!!errors.nationality)}
-          style={{ borderWidth: '1.5px' }}
+          className={selectClass('nationality', !!errors.nationality)}
         >
           <option value="">Sélectionner une nationalité</option>
           {NATIONALITIES.map(({ code, label }) => (
@@ -201,8 +211,7 @@ export default function AccountOwnerForm() {
         <input
           {...register('address_single_line')}
           placeholder="Ex : 12 rue de la Paix, 75001 Paris"
-          className={inputClass(!!errors.address_single_line)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('address_single_line', !!errors.address_single_line)}
         />
         {errors.address_single_line && <p className="text-danger text-xs">{errors.address_single_line.message}</p>}
       </div>
@@ -215,8 +224,7 @@ export default function AccountOwnerForm() {
           {...register('phone_number')}
           type="tel"
           placeholder="+33 6 12 34 56 78"
-          className={inputClass(!!errors.phone_number)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('phone_number', !!errors.phone_number)}
         />
         {errors.phone_number && <p className="text-danger text-xs">{errors.phone_number.message}</p>}
       </div>

@@ -12,21 +12,25 @@ export async function GET() {
   const headers = { Authorization: key, 'Content-Type': 'application/json' }
 
   try {
-    // 1. Try to get portal configuration (for expectedDocumentsIds)
+    // 1. Get portal configuration to determine portal type and expected document IDs
     let expectedDocumentIds: string[] = []
+    let portalType: string | null = null
 
     const portalRes = await fetch(`${base}/api/portal/configuration`, { headers })
     if (portalRes.ok) {
       const portalConfig = await portalRes.json()
       console.log('[portal-config] Portal config:', JSON.stringify(portalConfig).slice(0, 2000))
-      // Extract expectedDocumentsIds from steps
+      portalType = portalConfig.portalType ?? portalConfig.portal_type ?? null
       const steps = portalConfig.steps ?? portalConfig.portal_steps ?? []
       for (const step of steps) {
-        if (step.expectedDocumentsIds) expectedDocumentIds.push(...step.expectedDocumentsIds)
-        if (step.expected_documents_ids) expectedDocumentIds.push(...step.expected_documents_ids)
-        // Also check nested data
-        if (step.data?.expectedDocumentsIds) expectedDocumentIds.push(...step.data.expectedDocumentsIds)
+        // Find the "documents" step and extract expectedDocumentsIds from data
+        if (step.step === 'documents' || step.type === 'documents') {
+          const ids = step.data?.expectedDocumentsIds ?? step.data?.expected_documents_ids
+            ?? step.expectedDocumentsIds ?? step.expected_documents_ids
+          if (Array.isArray(ids)) expectedDocumentIds.push(...ids)
+        }
       }
+      console.log('[portal-config] Portal type:', portalType, '| Doc IDs from steps:', expectedDocumentIds)
     } else {
       console.log('[portal-config] Portal config not available:', portalRes.status)
     }
@@ -40,20 +44,32 @@ export async function GET() {
     }
 
     const allExpectedDocs = await expectedDocsRes.json()
-    console.log('[portal-config] Expected docs count:', Array.isArray(allExpectedDocs) ? allExpectedDocs.length : 'not array')
-    console.log('[portal-config] Expected docs sample:', JSON.stringify(allExpectedDocs).slice(0, 2000))
-
-    // If we have portal-specific IDs, filter; otherwise return all
     const docs = Array.isArray(allExpectedDocs) ? allExpectedDocs : []
-    const filtered = expectedDocumentIds.length > 0
-      ? docs.filter((d: Record<string, unknown>) => expectedDocumentIds.includes(d.id as string))
-      : docs
+    console.log('[portal-config] Expected docs count:', docs.length)
+
+    // 3. Filter documents based on portal type and configuration
+    let filtered: Record<string, unknown>[]
+
+    if (expectedDocumentIds.length > 0) {
+      // Collect or onboarding portal with explicit document step → use IDs as source of truth
+      filtered = docs.filter((d: Record<string, unknown>) => expectedDocumentIds.includes(d.id as string))
+      console.log('[portal-config] Filtered by step IDs:', filtered.length, 'docs')
+    } else if (portalType === 'onboarding' || portalType === null) {
+      // Onboarding portal without explicit step, or no portal config available →
+      // filter by onboarding_document flag (safe fallback, never show all)
+      filtered = docs.filter((d: Record<string, unknown>) => d.onboarding_document === true)
+      console.log('[portal-config] Filtered by onboarding_document flag:', filtered.length, 'docs')
+    } else {
+      // Collect portal but no expectedDocumentsIds → config error, show nothing
+      console.warn('[portal-config] Collect portal with no expectedDocumentsIds in steps — showing no documents')
+      filtered = []
+    }
 
     const result = filtered.map((d: Record<string, unknown>) => ({
       id: d.id as string,
       name: (d.name as string) || (d.slug as string) || 'Document',
       slug: (d.slug as string) || '',
-      is_mandatory: !!(d.is_required_in_onboarding_portal ?? d.is_mandatory ?? true),
+      is_mandatory: !!(d.is_required_in_onboarding_portal ?? d.is_mandatory ?? false),
       attached_to: (d.attached_to as string) || 'APPLICATION_BUSINESS',
     }))
 

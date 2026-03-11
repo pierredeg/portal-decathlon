@@ -140,6 +140,21 @@ export default function SubmitButton() {
         }
       }
 
+      // Send custom fields if any
+      const customFieldsData = state.sections.customFields.data
+      if (customFieldsData && Object.keys(customFieldsData).length > 0) {
+        const cfRes = await fetch(`/api/applications/${applicationId}/custom-fields`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ custom_fields: customFieldsData }),
+        })
+        if (!cfRes.ok) {
+          console.error('[Submit] Custom fields update failed:', await cfRes.text())
+        } else {
+          console.log('[Submit] Custom fields saved')
+        }
+      }
+
       // Submit the draft application (makes it visible in Ondorse)
       const submitRes = await fetch(`/api/applications/${applicationId}/submit`, {
         method: 'PUT',

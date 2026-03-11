@@ -40,6 +40,14 @@ const SECTIONS = [
     href: '/sections/documents',
     required: true,
   },
+  {
+    key: 'customFields' as const,
+    title: 'Informations additionnelles',
+    description: 'Informations spécifiques complémentaires pour votre dossier.',
+    icon: 'ri-list-settings-line',
+    href: '/sections/custom-fields',
+    required: false,
+  },
 ]
 
 function isSectionComplete(state: import('@/types/portal').PortalState, section: (typeof SECTIONS)[number]) {

@@ -84,6 +84,20 @@ export interface DocumentsData {
   expectedDocuments?: ExpectedDocument[]
 }
 
+export interface CustomFieldConfig {
+  id: string
+  name: string
+  slug: string
+  field_type: string // 'text' | 'number' | 'date' | 'boolean' | 'select' | etc.
+  is_required: boolean
+  description?: string
+  options?: string[] // for select/enum types
+  display_order: number
+}
+
+export type CustomFieldValue = string | number | boolean | string[]
+export type CustomFieldsData = Record<string, CustomFieldValue>
+
 export interface SectionState<T> {
   completed: boolean
   data: T | null
@@ -98,6 +112,7 @@ export interface PortalState {
     personalInfo: SectionState<PersonalInfoData>
     relations: SectionState<RelationPerson[]>
     documents: SectionState<DocumentsData>
+    customFields: SectionState<CustomFieldsData>
   }
 }
 

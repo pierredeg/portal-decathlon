@@ -9,6 +9,7 @@ import type {
   PersonalInfoData,
   RelationPerson,
   DocumentsData,
+  CustomFieldsData,
 } from '@/types/portal'
 
 type SectionDataMap = {
@@ -17,6 +18,7 @@ type SectionDataMap = {
   personalInfo: PersonalInfoData
   relations: RelationPerson[]
   documents: DocumentsData
+  customFields: CustomFieldsData
 }
 
 type Action =
@@ -35,6 +37,7 @@ const initialState: PortalState = {
     personalInfo: { completed: false, data: null },
     relations: { completed: false, data: null },
     documents: { completed: false, data: null },
+    customFields: { completed: false, data: null },
   },
 }
 
@@ -97,6 +100,7 @@ function stripFileObjects(data: DocumentsData | null): DocumentsData | null {
   })
   return {
     kbis: stripDoc(data.kbis),
+    companyFiles: data.companyFiles?.map(stripDoc),
     personDocuments: data.personDocuments.map((pd) => ({
       ...pd,
       front: stripDoc(pd.front),

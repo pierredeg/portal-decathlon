@@ -37,20 +37,41 @@ export default function PersonalInfoForm() {
   const router = useRouter()
   const existing = state.sections.personalInfo.data
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const { register, handleSubmit, watch, formState: { errors } } = useForm({
     resolver: zodResolver(schema),
     defaultValues: existing ?? undefined,
   })
+
+  const watched = watch()
 
   function onSubmit(data: FormData & PersonalInfoData) {
     updateSection('personalInfo', data)
     router.push('/dashboard')
   }
 
-  const inputClass = (hasError: boolean) =>
-    `h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-      hasError ? 'border-danger' : 'border-grey-300'
+  const inputClass = (name: keyof FormData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== '' && val !== 0
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 placeholder:text-grey-600 outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
     }`
+  }
+
+  const selectClass = (name: keyof FormData, hasError: boolean) => {
+    const val = watched[name]
+    const isValid = !hasError && val !== undefined && val !== ''
+    return `h-11 rounded-[8px] border-[1.5px] px-3.5 text-sm text-grey-900 bg-white outline-none transition-all duration-[120ms] ${
+      hasError
+        ? 'border-danger focus:shadow-[0_0_0_3px_rgba(204,25,0,0.15)]'
+        : isValid
+          ? 'border-success focus:border-success focus:shadow-[0_0_0_3px_rgba(0,138,62,0.15)]'
+          : 'border-grey-300 hover:border-grey-500 focus:border-brand-500 focus:shadow-[0_0_0_3px_rgba(54,67,186,0.15)]'
+    }`
+  }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5">
@@ -67,8 +88,7 @@ export default function PersonalInfoForm() {
               placeholder="JJ"
               min={1}
               max={31}
-              className={inputClass(!!errors.birth_date_day)}
-              style={{ borderWidth: '1.5px' }}
+              className={inputClass('birth_date_day', !!errors.birth_date_day)}
             />
           </div>
           <div>
@@ -78,8 +98,7 @@ export default function PersonalInfoForm() {
               placeholder="MM"
               min={1}
               max={12}
-              className={inputClass(!!errors.birth_date_month)}
-              style={{ borderWidth: '1.5px' }}
+              className={inputClass('birth_date_month', !!errors.birth_date_month)}
             />
           </div>
           <div>
@@ -89,8 +108,7 @@ export default function PersonalInfoForm() {
               placeholder="AAAA"
               min={1900}
               max={new Date().getFullYear()}
-              className={inputClass(!!errors.birth_date_year)}
-              style={{ borderWidth: '1.5px' }}
+              className={inputClass('birth_date_year', !!errors.birth_date_year)}
             />
           </div>
         </div>
@@ -106,10 +124,7 @@ export default function PersonalInfoForm() {
         </label>
         <select
           {...register('nationality')}
-          className={`h-11 rounded-[8px] border px-3.5 text-sm text-grey-900 bg-white outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 transition-colors ${
-            errors.nationality ? 'border-danger' : 'border-grey-300'
-          }`}
-          style={{ borderWidth: '1.5px' }}
+          className={selectClass('nationality', !!errors.nationality)}
         >
           <option value="">Sélectionner une nationalité</option>
           {NATIONALITIES.map(({ code, label }) => (
@@ -127,8 +142,7 @@ export default function PersonalInfoForm() {
         <input
           {...register('address_single_line')}
           placeholder="Ex : 12 rue de la Paix, 75001 Paris"
-          className={inputClass(!!errors.address_single_line)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('address_single_line', !!errors.address_single_line)}
         />
         {errors.address_single_line && <p className="text-danger text-xs">{errors.address_single_line.message}</p>}
       </div>
@@ -142,8 +156,7 @@ export default function PersonalInfoForm() {
           {...register('phone_number')}
           type="tel"
           placeholder="+33 6 12 34 56 78"
-          className={inputClass(!!errors.phone_number)}
-          style={{ borderWidth: '1.5px' }}
+          className={inputClass('phone_number', !!errors.phone_number)}
         />
         {errors.phone_number && <p className="text-danger text-xs">{errors.phone_number.message}</p>}
       </div>
