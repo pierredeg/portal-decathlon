@@ -25,7 +25,7 @@ const ROLE_OPTIONS: { value: PersonRole; label: string }[] = [
   { value: 'ACCOUNT_OWNER', label: 'Titulaire du compte' },
 ]
 
-function PersonCard({ person, onRemove }: { person: RelationPerson; onRemove: () => void }) {
+function PersonCard({ person, onEdit, onRemove }: { person: RelationPerson; onEdit: () => void; onRemove: () => void }) {
   return (
     <div className="bg-grey-50 rounded-[12px] border border-grey-200 p-4 flex items-start justify-between gap-3">
       <div className="flex items-start gap-3">
@@ -47,22 +47,48 @@ function PersonCard({ person, onRemove }: { person: RelationPerson; onRemove: ()
           )}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={onRemove}
-        className="text-grey-600 hover:text-danger transition-colors"
-        aria-label="Supprimer"
-      >
-        <i className="ri-delete-bin-line" />
-      </button>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="text-grey-600 hover:text-brand-500 transition-colors"
+          aria-label="Modifier"
+        >
+          <i className="ri-pencil-line" />
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-grey-600 hover:text-danger transition-colors"
+          aria-label="Supprimer"
+        >
+          <i className="ri-delete-bin-line" />
+        </button>
+      </div>
     </div>
   )
 }
 
-function AddPersonModal({ onAdd, onClose }: { onAdd: (p: RelationPerson) => void; onClose: () => void }) {
+function PersonModal({
+  initial,
+  onSave,
+  onClose,
+}: {
+  initial?: RelationPerson
+  onSave: (p: RelationPerson) => void
+  onClose: () => void
+}) {
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm({
     resolver: zodResolver(personSchema),
-    defaultValues: { roles: [] },
+    defaultValues: {
+      given_names: initial?.given_names ?? '',
+      last_name: initial?.last_name ?? '',
+      email: initial?.email ?? '',
+      roles: initial?.roles ?? [],
+      direct_ownership_percentage: initial?.direct_ownership_percentage != null
+        ? String(initial.direct_ownership_percentage)
+        : '',
+    },
   })
 
   const selectedRoles = watch('roles') as string[]
@@ -78,8 +104,8 @@ function AddPersonModal({ onAdd, onClose }: { onAdd: (p: RelationPerson) => void
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function onSubmit(data: any) {
-    onAdd({
-      id: crypto.randomUUID(),
+    onSave({
+      id: initial?.id ?? crypto.randomUUID(),
       given_names: data.given_names,
       last_name: data.last_name,
       email: data.email || undefined,
@@ -98,7 +124,7 @@ function AddPersonModal({ onAdd, onClose }: { onAdd: (p: RelationPerson) => void
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
       <div className="bg-white rounded-[12px] w-full max-w-md p-6 flex flex-col gap-5" style={{ boxShadow: '0 20px 25px rgba(0,16,24,.10)' }}>
         <div className="flex items-center justify-between">
-          <h3 className="font-condensed font-bold text-grey-900 text-lg">Ajouter une personne</h3>
+          <h3 className="font-condensed font-bold text-grey-900 text-lg">{initial ? 'Modifier la personne' : 'Ajouter une personne'}</h3>
           <button onClick={onClose} className="text-grey-600 hover:text-grey-900">
             <i className="ri-close-line text-xl" />
           </button>
@@ -166,8 +192,8 @@ function AddPersonModal({ onAdd, onClose }: { onAdd: (p: RelationPerson) => void
               type="submit"
               className="inline-flex items-center gap-2 px-5 py-2 rounded-[100px] bg-brand-500 hover:bg-brand-600 text-white font-bold text-sm transition-colors"
             >
-              Ajouter
-              <i className="ri-user-add-line" />
+              {initial ? 'Enregistrer' : 'Ajouter'}
+              <i className={initial ? 'ri-check-line' : 'ri-user-add-line'} />
             </button>
           </div>
         </form>
@@ -176,14 +202,44 @@ function AddPersonModal({ onAdd, onClose }: { onAdd: (p: RelationPerson) => void
   )
 }
 
+function buildInitialPersons(state: ReturnType<typeof usePortal>['state']): RelationPerson[] {
+  const existing = state.sections.relations.data ?? []
+  const owner = state.sections.accountOwner.data
+  if (!owner) return existing
+
+  const alreadyPresent = existing.some(
+    (p) => p.given_names.toLowerCase() === owner.given_names.toLowerCase() &&
+           p.last_name.toLowerCase() === owner.last_name.toLowerCase()
+  )
+  if (alreadyPresent) return existing
+
+  const ownerPerson: RelationPerson = {
+    id: 'account-owner',
+    given_names: owner.given_names,
+    last_name: owner.last_name,
+    email: owner.email,
+    roles: ['ACCOUNT_OWNER'],
+  }
+  return [ownerPerson, ...existing]
+}
+
 export default function RelationsForm() {
   const { state, updateSection } = usePortal()
   const router = useRouter()
-  const [persons, setPersons] = useState<RelationPerson[]>(state.sections.relations.data ?? [])
-  const [showModal, setShowModal] = useState(false)
+  const [persons, setPersons] = useState<RelationPerson[]>(() => buildInitialPersons(state))
+  const [editingPerson, setEditingPerson] = useState<RelationPerson | null>(null)
+  const [showAddModal, setShowAddModal] = useState(false)
 
-  function addPerson(p: RelationPerson) {
-    setPersons((prev) => [...prev, p])
+  function savePerson(p: RelationPerson) {
+    setPersons((prev) => {
+      const idx = prev.findIndex((x) => x.id === p.id)
+      if (idx !== -1) {
+        const next = [...prev]
+        next[idx] = p
+        return next
+      }
+      return [...prev, p]
+    })
   }
 
   function removePerson(id: string) {
@@ -210,22 +266,25 @@ export default function RelationsForm() {
       ) : (
         <div className="flex flex-col gap-3">
           {persons.map((p) => (
-            <PersonCard key={p.id} person={p} onRemove={() => removePerson(p.id)} />
+            <PersonCard key={p.id} person={p} onEdit={() => setEditingPerson(p)} onRemove={() => removePerson(p.id)} />
           ))}
         </div>
       )}
 
       <button
         type="button"
-        onClick={() => setShowModal(true)}
+        onClick={() => setShowAddModal(true)}
         className="inline-flex items-center gap-2 text-brand-500 text-sm font-medium border border-brand-500/30 hover:border-brand-500 rounded-[8px] px-4 py-2.5 transition-colors"
       >
         <i className="ri-user-add-line" />
         Ajouter une personne
       </button>
 
-      {showModal && (
-        <AddPersonModal onAdd={addPerson} onClose={() => setShowModal(false)} />
+      {showAddModal && (
+        <PersonModal onSave={savePerson} onClose={() => setShowAddModal(false)} />
+      )}
+      {editingPerson && (
+        <PersonModal initial={editingPerson} onSave={savePerson} onClose={() => setEditingPerson(null)} />
       )}
 
       <div className="flex items-center justify-between pt-2">

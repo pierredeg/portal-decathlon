@@ -49,6 +49,40 @@ export default function SubmitButton() {
         applicationId = result.applicationId
       }
 
+      // Create the account owner (signatory) in Ondorse
+      const ownerData = state.sections.accountOwner.data
+      const personalData = state.sections.personalInfo.data
+      if (ownerData) {
+        const personPayload: Record<string, unknown> = {
+          given_names: ownerData.given_names,
+          last_name: ownerData.last_name,
+          email: ownerData.email,
+          roles: ['ACCOUNT_OWNER'],
+        }
+        if (personalData) {
+          if (personalData.birth_date_year && personalData.birth_date_month && personalData.birth_date_day) {
+            personPayload.birth_date = `${personalData.birth_date_year}-${String(personalData.birth_date_month).padStart(2, '0')}-${String(personalData.birth_date_day).padStart(2, '0')}`
+          }
+          if (personalData.nationality) personPayload.nationalities = [personalData.nationality]
+          if (personalData.address_single_line) personPayload.address_single_line = personalData.address_single_line
+        }
+        console.log('[Submit] Creating ACCOUNT_OWNER person:', personPayload)
+        const personRes = await fetch(`/api/applications/${applicationId}/persons`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(personPayload),
+        })
+        if (!personRes.ok) {
+          const errText = await personRes.text()
+          console.error('[Submit] Failed to create ACCOUNT_OWNER person:', personRes.status, errText)
+        } else {
+          const personResult = await personRes.json()
+          console.log('[Submit] ACCOUNT_OWNER person created:', personResult)
+        }
+      } else {
+        console.warn('[Submit] No accountOwner data found, skipping ACCOUNT_OWNER person creation')
+      }
+
       // Fetch persons from the application to get their Ondorse person_ids
       let ondorsePersons: { id: string; given_names?: string; last_name?: string; roles?: string[] }[] = []
       try {
